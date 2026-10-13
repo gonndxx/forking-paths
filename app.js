@@ -478,7 +478,7 @@ function encodeState(payload = state) {
 
 async function shareCurrent() {
   const url = new URL(location.href);
-  const { notes, ...shared } = state;
+  const { notes, lastScores, ...shared } = state;
   url.searchParams.set('s', encodeState(shared));
   url.hash = '';
   try {
