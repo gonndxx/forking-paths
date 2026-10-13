@@ -16,6 +16,13 @@ const PRESETS = {
 
 const STORAGE_KEY = 'forking-paths-v1';
 const SNAPSHOT_KEY = 'forking-paths-snapshots-v1';
+const FUTURE_OPTIONS = [
+  { value: 'better', label: '会更好' }, { value: 'same', label: '差不多' },
+  { value: 'harder', label: '会更难' }, { value: 'unsure', label: '说不准' }
+];
+const CONFIDENCE_OPTIONS = [
+  { value: 'high', label: '有把握' }, { value: 'medium', label: '有些把握' }, { value: 'low', label: '还没把握' }
+];
 const $ = selector => document.querySelector(selector);
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || min));
 let state = loadState();
@@ -53,7 +60,17 @@ function normalize(input) {
     lastScores: Object.fromEntries(['a', 'b', 'c'].map(path => [path, criteria.map((_, i) => clamp(input.lastScores?.[path]?.[i] ?? input.scores?.[path]?.[i] ?? base.scores[path]?.[i] ?? 5, 1, 10))])),
     weights: criteria.map((_, i) => clamp(input.weights?.[i] ?? base.weights[i] ?? 3, 1, 5)),
     minimums: criteria.map((_, i) => input.minimums?.[i] == null ? null : clamp(input.minimums[i], 1, 10)),
-    notes: Object.fromEntries(['a', 'b', 'c'].map(path => [path, criteria.map((_, i) => typeof input.notes?.[path]?.[i] === 'string' ? input.notes[path][i].slice(0, 140) : '')]))
+    notes: Object.fromEntries(['a', 'b', 'c'].map(path => [path, criteria.map((_, i) => typeof input.notes?.[path]?.[i] === 'string' ? input.notes[path][i].slice(0, 140) : '')])),
+    future: Object.fromEntries(['a', 'b', 'c'].map(path => {
+      const item = input.future?.[path];
+      return [path, {
+        near: FUTURE_OPTIONS.some(option => option.value === item?.near) ? item.near : '',
+        far: FUTURE_OPTIONS.some(option => option.value === item?.far) ? item.far : '',
+        confidence: CONFIDENCE_OPTIONS.some(option => option.value === item?.confidence) ? item.confidence : '',
+        hope: typeof item?.hope === 'string' ? item.hope.slice(0, 100) : '',
+        worry: typeof item?.worry === 'string' ? item.worry.slice(0, 100) : ''
+      }];
+    }))
   };
 }
 
@@ -172,6 +189,52 @@ function makeScoreRow(path, label, i) {
   return item;
 }
 
+function renderFuture(path) {
+  const item = state.future[path];
+  const panel = document.createElement('div'); panel.className = 'future-fields';
+  const intro = document.createElement('p'); intro.textContent = '凭直觉点选即可，之后随时可以改。';
+  panel.append(intro);
+  for (const [field, title, options] of [
+    ['near', '一年后，这条路会怎样？', FUTURE_OPTIONS],
+    ['far', '三年后呢？', FUTURE_OPTIONS],
+    ['confidence', '你对这个判断有多大把握？', CONFIDENCE_OPTIONS]
+  ]) {
+    const group = document.createElement('div'); group.className = 'future-choice';
+    const label = document.createElement('strong'); label.textContent = title;
+    const choices = document.createElement('div'); choices.className = 'future-choice-buttons';
+    options.forEach(option => {
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = option.label;
+      button.setAttribute('aria-pressed', String(item[field] === option.value));
+      button.addEventListener('click', () => {
+        item[field] = item[field] === option.value ? '' : option.value;
+        choices.querySelectorAll('button').forEach(choice => choice.setAttribute('aria-pressed', String(choice === button && item[field] === option.value)));
+        updateFutureSummary(path); updateResult(); saveState();
+      });
+      choices.append(button);
+    });
+    group.append(label, choices); panel.append(group);
+  }
+  for (const [field, title, placeholder] of [
+    ['hope', '最期待的变化', '例如：能有更多自己的时间'],
+    ['worry', '最担心的代价', '例如：收入可能暂时不稳定']
+  ]) {
+    const label = document.createElement('label'); label.className = 'future-text';
+    const span = document.createElement('span'); span.textContent = title;
+    const input = document.createElement('input'); input.type = 'text'; input.maxLength = 100;
+    input.value = item[field]; input.placeholder = placeholder;
+    input.addEventListener('input', () => { item[field] = input.value.slice(0, 100); updateFutureSummary(path); updateResult(); saveState(); });
+    label.append(span, input); panel.append(label);
+  }
+  $(`#future${path.toUpperCase()}`).replaceChildren(panel);
+  updateFutureSummary(path);
+}
+
+function updateFutureSummary(path) {
+  const item = state.future[path];
+  const count = ['near', 'far', 'confidence', 'hope', 'worry'].filter(field => Boolean(item[field])).length;
+  $(`#futureDetails${path.toUpperCase()} summary span`).textContent = count ? `已记录 ${count} 项 · 可随时修改` : '可选 · 想一想以后';
+}
+
 function renderControls() {
   $('#questionInput').value = state.question;
   $('#optionA').value = state.a;
@@ -185,6 +248,7 @@ function renderControls() {
   ['a', 'b', 'c'].forEach(path => {
     const target = $(`#factors${path.toUpperCase()}`);
     target.replaceChildren(...state.criteria.map((label, i) => makeScoreRow(path, label, i)));
+    renderFuture(path);
   });
   $('#priorityPanel').replaceChildren(...state.criteria.map((label, i) => makeSlider({
     id: `weight-${i}`, label, value: state.weights[i], max: 5,
@@ -353,6 +417,59 @@ function findTurningPoint(base) {
   return candidates[0] || null;
 }
 
+function renderFutureResult(result) {
+  const labelFor = (options, value) => options.find(option => option.value === value)?.label ?? '还没想好';
+  $('#futureComparison').replaceChildren(...result.keys.map(path => {
+    const item = state.future[path];
+    const card = document.createElement('article'); card.className = `future-summary-card ${path}`;
+    const heading = document.createElement('h5'); heading.textContent = state[path];
+    card.append(heading);
+    const known = state.criteria.map((label, i) => ({ label, score: state.scores[path][i], weight: state.weights[i] }))
+      .filter(point => point.score !== null);
+    const ordered = [...known].sort((a, b) => b.score - a.score || b.weight - a.weight);
+    const lower = [...known].sort((a, b) => a.score - b.score || b.weight - a.weight);
+    const unknown = state.criteria.filter((_, i) => state.scores[path][i] === null);
+    const profile = document.createElement('div'); profile.className = 'future-profile';
+    const profileTitle = document.createElement('span'); profileTitle.textContent = '根据当前评分';
+    const profileText = document.createElement('p');
+    const spread = known.length && ordered[0].score !== lower[0].score
+      ? `较高：${ordered[0].label} ${ordered[0].score} 分 · 较低：${lower[0].label} ${lower[0].score} 分`
+      : known.length ? `已评分的 ${known.length} 项都是 ${known[0].score} 分` : '';
+    profileText.textContent = `${spread}${unknown.length ? `${spread ? ' · ' : ''}待确认：${unknown.join('、')}` : ''}`;
+    profile.append(profileTitle, profileText); card.append(profile);
+    for (const [label, value] of [
+      ['一年后', labelFor(FUTURE_OPTIONS, item.near)],
+      ['三年后', labelFor(FUTURE_OPTIONS, item.far)],
+      ['把握程度', labelFor(CONFIDENCE_OPTIONS, item.confidence)],
+      ['最期待', item.hope.trim() || '还没写'],
+      ['最担心', item.worry.trim() || '还没写']
+    ]) {
+      const row = document.createElement('div'); row.className = 'future-summary-row';
+      const name = document.createElement('span'); name.textContent = label;
+      const text = document.createElement('strong'); text.textContent = value;
+      if (value === '还没想好' || value === '还没写') text.className = 'empty';
+      row.append(name, text); card.append(row);
+    }
+    return card;
+  }));
+  const unknowns = state.criteria.map((label, i) => ({ label, i, weight: state.weights[i] }))
+    .filter(item => result.keys.some(path => state.scores[path][item.i] === null))
+    .sort((a, b) => b.weight - a.weight);
+  let question;
+  if (unknowns.length) question = `先弄清「${unknowns[0].label}」：它对你很重要，但还有路线没有评分。你能找到一条事实或做一次小尝试吗？`;
+  else {
+    const missingFar = result.keys.find(path => !state.future[path].far);
+    const lowConfidence = result.keys.find(path => state.future[path].confidence === 'low');
+    const harder = result.keys.find(path => state.future[path].far === 'harder');
+    if (missingFar) question = `如果走「${state[missingFar]}」，三年后你最希望保住什么？先凭直觉点一下长期预期。`;
+    else if (lowConfidence) question = `你对「${state[lowConfidence]}」还没把握。哪一个最小的尝试能帮你验证判断？`;
+    else if (harder) question = `你觉得「${state[harder]}」三年后会更难。最可能让它变难的原因是什么？`;
+    else if (result.leader && result.runner && result.scores[result.leader] - result.scores[result.runner] < .35) question = '两条路很接近。哪一种代价是你最不愿意承受的？';
+    else question = '再看一眼你写下的期待和担心：哪一项最需要真实信息来验证？';
+  }
+  $('#nextQuestion').textContent = `下一步只想一件事：${question}`;
+}
+
 function updateResult() {
   const result = evaluateState();
   const { keys, comparable, scores, failures, pending, eligible, leader, runner } = result;
@@ -412,6 +529,7 @@ function updateResult() {
           : point ? `如果将「${state[point.path]}」的「${point.label}」从 ${point.original} 分调整到 ${point.target} 分，倾向会转向「${state[point.newLeader]}」。`
             : '单独调整一项评分无法改变当前倾向；可以重新考虑几项评分或重要程度。';
   turning.append(turnLabel, turnText);
+  renderFutureResult(result);
   drawDiagram();
 }
 
@@ -478,12 +596,15 @@ function encodeState(payload = state) {
 
 async function shareCurrent() {
   const url = new URL(location.href);
-  const { notes, lastScores, ...shared } = state;
+  const { notes, lastScores, future, ...shared } = state;
+  shared.future = Object.fromEntries(activePaths().map(path => [path, {
+    near: future[path].near, far: future[path].far, confidence: future[path].confidence
+  }]));
   url.searchParams.set('s', encodeState(shared));
   url.hash = '';
   try {
     await navigator.clipboard.writeText(url.toString());
-    showToast('分享链接已复制，打开的人会看到这份选择。');
+    showToast('分享链接已复制；私人文字不会出现在链接中。');
   } catch {
     window.prompt('复制这条分享链接：', url.toString());
   }
