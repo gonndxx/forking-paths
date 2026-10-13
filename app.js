@@ -200,10 +200,12 @@ function renderFuture(path) {
     ['confidence', '你对这个判断有多大把握？', CONFIDENCE_OPTIONS]
   ]) {
     const group = document.createElement('div'); group.className = 'future-choice';
+    group.setAttribute('role', 'group'); group.setAttribute('aria-label', `${state[path]}：${title}`);
     const label = document.createElement('strong'); label.textContent = title;
     const choices = document.createElement('div'); choices.className = 'future-choice-buttons';
     options.forEach(option => {
       const button = document.createElement('button'); button.type = 'button'; button.textContent = option.label;
+      button.setAttribute('aria-label', `${state[path]}，${title}${option.label}`);
       button.setAttribute('aria-pressed', String(item[field] === option.value));
       button.addEventListener('click', () => {
         item[field] = item[field] === option.value ? '' : option.value;
@@ -418,7 +420,6 @@ function findTurningPoint(base) {
 }
 
 function renderFutureResult(result) {
-  const labelFor = (options, value) => options.find(option => option.value === value)?.label ?? '还没想好';
   $('#futureComparison').replaceChildren(...result.keys.map(path => {
     const item = state.future[path];
     const card = document.createElement('article'); card.className = `future-summary-card ${path}`;
@@ -437,21 +438,39 @@ function renderFutureResult(result) {
       : known.length ? `已评分的 ${known.length} 项都是 ${known[0].score} 分` : '';
     profileText.textContent = `${spread}${unknown.length ? `${spread ? ' · ' : ''}待确认：${unknown.join('、')}` : ''}`;
     profile.append(profileTitle, profileText); card.append(profile);
-    for (const [label, value] of [
-      ['一年后', labelFor(FUTURE_OPTIONS, item.near)],
-      ['三年后', labelFor(FUTURE_OPTIONS, item.far)],
-      ['把握程度', labelFor(CONFIDENCE_OPTIONS, item.confidence)],
-      ['最期待', item.hope.trim() || '还没写'],
-      ['最担心', item.worry.trim() || '还没写']
-    ]) {
+    const entries = [
+      ['一年后', FUTURE_OPTIONS.find(option => option.value === item.near)?.label],
+      ['三年后', FUTURE_OPTIONS.find(option => option.value === item.far)?.label],
+      ['把握程度', CONFIDENCE_OPTIONS.find(option => option.value === item.confidence)?.label],
+      ['最期待', item.hope.trim()],
+      ['最担心', item.worry.trim()]
+    ].filter(([, value]) => value);
+    if (!entries.length) {
+      const empty = document.createElement('p'); empty.className = 'future-summary-empty';
+      empty.textContent = '还没有写未来速写。想更深入时再补充。'; card.append(empty);
+    }
+    for (const [label, value] of entries) {
       const row = document.createElement('div'); row.className = 'future-summary-row';
       const name = document.createElement('span'); name.textContent = label;
       const text = document.createElement('strong'); text.textContent = value;
-      if (value === '还没想好' || value === '还没写') text.className = 'empty';
       row.append(name, text); card.append(row);
     }
+    const edit = document.createElement('button'); edit.type = 'button'; edit.className = 'future-summary-edit';
+    edit.textContent = entries.length ? '修改未来速写 ↗' : '补充未来速写 ↗';
+    edit.setAttribute('aria-label', `${state[path]}：${edit.textContent}`);
+    edit.addEventListener('click', () => {
+      const details = $(`#futureDetails${path.toUpperCase()}`);
+      details.open = true;
+      details.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    card.append(edit);
     return card;
   }));
+  const tension = $('#futureTension');
+  const alternative = result.leader && result.keys.find(path => path !== result.leader && state.future[path].far === 'better');
+  const diverges = alternative && state.future[result.leader].far === 'harder';
+  tension.hidden = !diverges;
+  tension.textContent = diverges ? `时间视角有分歧：当前倾向指向「${state[result.leader]}」，但你预计它三年后会更难，而「${state[alternative]}」会更好。这个差别值得重新想一想。` : '';
   const unknowns = state.criteria.map((label, i) => ({ label, i, weight: state.weights[i] }))
     .filter(item => result.keys.some(path => state.scores[path][item.i] === null))
     .sort((a, b) => b.weight - a.weight);
@@ -461,7 +480,8 @@ function renderFutureResult(result) {
     const missingFar = result.keys.find(path => !state.future[path].far);
     const lowConfidence = result.keys.find(path => state.future[path].confidence === 'low');
     const harder = result.keys.find(path => state.future[path].far === 'harder');
-    if (missingFar) question = `如果走「${state[missingFar]}」，三年后你最希望保住什么？先凭直觉点一下长期预期。`;
+    if (result.keys.every(path => !state.future[path].far)) question = '一年后和三年后，哪条路更接近你希望过的日常？可以先凭直觉点选。';
+    else if (missingFar) question = `如果走「${state[missingFar]}」，三年后你最希望保住什么？先凭直觉点一下长期预期。`;
     else if (lowConfidence) question = `你对「${state[lowConfidence]}」还没把握。哪一个最小的尝试能帮你验证判断？`;
     else if (harder) question = `你觉得「${state[harder]}」三年后会更难。最可能让它变难的原因是什么？`;
     else if (result.leader && result.runner && result.scores[result.leader] - result.scores[result.runner] < .35) question = '两条路很接近。哪一种代价是你最不愿意承受的？';
@@ -604,7 +624,7 @@ async function shareCurrent() {
   url.hash = '';
   try {
     await navigator.clipboard.writeText(url.toString());
-    showToast('分享链接已复制；私人文字不会出现在链接中。');
+    showToast('链接含问题、路线和评分；不含评分依据与期待／担心的文字。');
   } catch {
     window.prompt('复制这条分享链接：', url.toString());
   }
