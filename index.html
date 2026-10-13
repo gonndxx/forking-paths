@@ -50,16 +50,23 @@
         </div>
 
         <div class="section-heading priorities-heading"><div><span class="section-index">03 / WHAT MATTERS</span><h2>此刻，你更在意什么？</h2></div><span class="section-note">权重越高，对结果影响越大</span></div>
+        <div class="criteria-toolbar"><div><strong>评价维度</strong><span>给这个路口换上你自己的判断标准（2–6 项）</span></div><button id="addCriterion" class="button button-quiet" type="button">添加维度 <span aria-hidden="true">＋</span></button></div>
+        <div id="criteriaEditor" class="criteria-editor" aria-label="编辑评价维度"></div>
         <div class="priority-panel" id="priorityPanel"></div>
 
-        <div class="section-heading outlook-heading"><div><span class="section-index">04 / THE OUTLOOK</span><h2>当下的倾向</h2></div><button id="exportButton" class="button button-outline" type="button">导出选择卡 <span aria-hidden="true">↓</span></button></div>
+        <div class="section-heading outlook-heading"><div><span class="section-index">04 / THE OUTLOOK</span><h2>当下的倾向</h2></div><div class="outlook-actions"><button id="saveSnapshot" class="button button-primary" type="button">保存这一刻 <span aria-hidden="true">↗</span></button><button id="exportButton" class="button button-outline" type="button">导出选择卡 <span aria-hidden="true">↓</span></button></div></div>
         <div class="outlook-panel">
           <div class="outlook-top"><div><p class="overline">YOUR CURRENT LEANING</p><h3 id="resultTitle">你的答案正在形成</h3><p id="resultCopy" class="result-copy"></p></div><div class="score-pair"><div class="score-chip a"><span id="scoreLabelA"></span><strong id="scoreA"></strong></div><div class="score-chip b"><span id="scoreLabelB"></span><strong id="scoreB"></strong></div></div></div>
-          <div class="diagram-wrap"><svg id="pathDiagram" viewBox="0 0 900 300" role="img" aria-label="两种选择在四个维度上的对比路线图" preserveAspectRatio="xMidYMid meet"></svg></div>
+          <div class="diagram-wrap"><svg id="pathDiagram" viewBox="0 0 900 300" role="img" aria-label="两种选择在各维度上的对比路线图" preserveAspectRatio="xMidYMid meet"></svg></div>
           <div class="diagram-legend"><span><i class="legend-dot a"></i><span id="legendA"></span></span><span><i class="legend-dot b"></i><span id="legendB"></span></span></div>
           <div id="insight" class="insight"></div>
+          <div id="turningPoint" class="turning-point"></div>
           <p class="disclaimer">这是一张权衡地图，不是未来预测。分数来自你输入的感受与权重。</p>
         </div>
+
+        <div class="section-heading history-heading"><div><span class="section-index">05 / YOUR TRAIL</span><h2>走过的路口</h2></div><span class="section-note">留住当时的想法，以后再回来看看</span></div>
+        <div id="snapshotList" class="snapshot-list"></div>
+        <p class="history-note">快照只保存在当前浏览器。清除浏览器数据后将无法找回；分享链接只包含当前选择。</p>
       </section>
     </main>
     <footer><div class="footer-brand">分岔路口<span>.</span></div><p>重要的选择，值得被认真看见。</p><a href="#top">回到起点 ↑</a></footer>
